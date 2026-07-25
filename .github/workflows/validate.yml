@@ -24,6 +24,10 @@ jobs:
       - name: validate
         run: tofu validate
 
+      # Uses mock_provider, so it needs no credentials and no network.
+      - name: test
+        run: tofu test
+
       - name: validate example
         working-directory: examples/basic
         run: |

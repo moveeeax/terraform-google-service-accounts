@@ -19,14 +19,17 @@ module "service_accounts" {
 
   project_id = var.project_id
 
+  # Account ids must be 6-30 characters, so "app" would be rejected by Google.
   accounts = {
-    "app" = {
+    "app-runtime" = {
       display_name = "Application service account"
     }
   }
 
+  # No create_key and no allow_service_account_keys: this example issues no
+  # long-lived credentials. Attach the account to the workload instead.
   project_roles = {
-    "app|roles/storage.objectViewer" = "roles/storage.objectViewer"
+    "app-runtime|roles/storage.objectViewer" = "roles/storage.objectViewer"
   }
 }
 
