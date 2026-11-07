@@ -6,6 +6,8 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-07
+
 ### Added
 
 - `accounts[*].workload_identity_principals`: principals granted
@@ -19,4 +21,5 @@ All notable changes to this module are documented here. The format follows
   that account only, through the same `google_service_account_iam_member`.
   `allUsers` and `allAuthenticatedUsers` are rejected. Both default to `[]`.
 
-[Unreleased]: https://github.com/moveeeax/terraform-google-service-accounts/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/moveeeax/terraform-google-service-accounts/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/moveeeax/terraform-google-service-accounts/compare/v1.1.0...v1.2.0
