@@ -9,6 +9,9 @@ variable "accounts" {
     display_name = optional(string)
     description  = optional(string)
     create_key   = optional(bool, false)
+
+    # Granted roles/iam.workloadIdentityUser on this account only.
+    workload_identity_principals = optional(list(string), [])
   }))
   default = {}
 
@@ -17,6 +20,17 @@ variable "accounts" {
       for id in keys(var.accounts) : can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", id))
     ])
     error_message = "Each key of var.accounts becomes the account_id of a google_service_account and must satisfy Google's rules: 6-30 characters, starting with a lowercase letter, ending with a lowercase letter or digit, containing only lowercase letters, digits and hyphens."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for sa in values(var.accounts) : [
+        for m in sa.workload_identity_principals :
+        can(regex("^(principal|principalSet)://iam\\.googleapis\\.com/.+$", m)) ||
+        can(regex("^serviceAccount:[a-z0-9.:-]+\\.svc\\.id\\.goog\\[[^/\\]]+/[^/\\]]+\\]$", m))
+      ]
+    ]))
+    error_message = "Each entry of workload_identity_principals must be a Workload Identity Federation principal (\"principal://iam.googleapis.com/...\" or \"principalSet://iam.googleapis.com/...\") or a GKE Workload Identity member (\"serviceAccount:<project>.svc.id.goog[<namespace>/<ksa>]\")."
   }
 }
 
