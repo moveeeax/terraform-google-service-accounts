@@ -12,6 +12,11 @@ variable "accounts" {
 
     # Granted roles/iam.workloadIdentityUser on this account only.
     workload_identity_principals = optional(list(string), [])
+
+    # Granted roles/iam.serviceAccountTokenCreator and roles/iam.serviceAccountUser
+    # on this account only, instead of on the whole project.
+    impersonators = optional(list(string), [])
+    users         = optional(list(string), [])
   }))
   default = {}
 
@@ -31,6 +36,17 @@ variable "accounts" {
       ]
     ]))
     error_message = "Each entry of workload_identity_principals must be a Workload Identity Federation principal (\"principal://iam.googleapis.com/...\" or \"principalSet://iam.googleapis.com/...\") or a GKE Workload Identity member (\"serviceAccount:<project>.svc.id.goog[<namespace>/<ksa>]\")."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for sa in values(var.accounts) : [
+        for m in concat(sa.impersonators, sa.users) :
+        can(regex("^(user|group|serviceAccount|domain):[^\\s]+$", m)) ||
+        can(regex("^(principal|principalSet)://iam\\.googleapis\\.com/.+$", m))
+      ]
+    ]))
+    error_message = "Each entry of impersonators and users must be an IAM member such as \"user:<email>\", \"group:<email>\", \"serviceAccount:<email>\", \"domain:<domain>\", \"principal://iam.googleapis.com/...\" or \"principalSet://iam.googleapis.com/...\". allUsers and allAuthenticatedUsers are rejected: they would let anyone act as the account."
   }
 }
 

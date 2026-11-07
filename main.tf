@@ -13,7 +13,9 @@ locals {
   # Roles granted on each account itself (who may act as it), as role => members.
   account_role_members = {
     for id, sa in var.accounts : id => {
-      "roles/iam.workloadIdentityUser" = sa.workload_identity_principals
+      "roles/iam.workloadIdentityUser"       = sa.workload_identity_principals
+      "roles/iam.serviceAccountTokenCreator" = sa.impersonators
+      "roles/iam.serviceAccountUser"         = sa.users
     }
   }
 
