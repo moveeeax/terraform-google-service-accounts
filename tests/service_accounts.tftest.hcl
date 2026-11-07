@@ -270,3 +270,78 @@ run "rejects_workload_identity_principal_with_malformed_gke_member" {
 
   expect_failures = [var.accounts]
 }
+
+run "impersonators_and_users_are_granted_on_the_account" {
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        impersonators = ["group:platform@example.com"]
+        users         = ["serviceAccount:cloudbuild@example-project.iam.gserviceaccount.com"]
+      }
+    }
+  }
+
+  assert {
+    condition     = length(google_service_account_iam_member.this) == 2
+    error_message = "Expected one grant for the impersonator and one for the user."
+  }
+
+  assert {
+    condition     = google_service_account_iam_member.this["ci-deployer|roles/iam.serviceAccountTokenCreator|group:platform@example.com"].member == "group:platform@example.com"
+    error_message = "Impersonators must be granted roles/iam.serviceAccountTokenCreator."
+  }
+
+  assert {
+    condition     = google_service_account_iam_member.this["ci-deployer|roles/iam.serviceAccountUser|serviceAccount:cloudbuild@example-project.iam.gserviceaccount.com"].role == "roles/iam.serviceAccountUser"
+    error_message = "Users must be granted roles/iam.serviceAccountUser."
+  }
+
+  assert {
+    condition     = length(google_project_iam_member.this) == 0
+    error_message = "Impersonation rights must not be granted at project level."
+  }
+}
+
+run "same_member_can_hold_several_roles_on_one_account" {
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        impersonators = ["user:alice@example.com"]
+        users         = ["user:alice@example.com"]
+      }
+    }
+  }
+
+  assert {
+    condition     = length(google_service_account_iam_member.this) == 2
+    error_message = "The same member listed under impersonators and users must get both roles."
+  }
+}
+
+run "rejects_all_users_as_impersonator" {
+  command = plan
+
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        impersonators = ["allUsers"]
+      }
+    }
+  }
+
+  expect_failures = [var.accounts]
+}
+
+run "rejects_user_without_member_type" {
+  command = plan
+
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        users = ["alice@example.com"]
+      }
+    }
+  }
+
+  expect_failures = [var.accounts]
+}

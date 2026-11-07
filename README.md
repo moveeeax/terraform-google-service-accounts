@@ -2,8 +2,8 @@
 
 Terraform module that manages [Google Cloud](https://cloud.google.com/)
 service accounts (`google_service_account`). It creates one or more accounts
-from a map, optionally issues keys, grants project-level roles, and lets
-Workload Identity principals act as an account.
+from a map, optionally issues keys, grants project-level roles, and controls
+who may act as each account (Workload Identity, impersonation, attaching).
 
 ## Usage
 
@@ -54,6 +54,34 @@ Entries must start with `principal://iam.googleapis.com/`,
 `principalSet://iam.googleapis.com/`, or be a
 `serviceAccount:<project>.svc.id.goog[<namespace>/<ksa>]` member; anything else
 fails validation. Setting up the pool and provider is outside this module.
+
+### Impersonation and attaching
+
+`impersonators` and `users` grant, on that one account only:
+
+| Field           | Role                                   | Lets the member                                                    |
+|-----------------|----------------------------------------|--------------------------------------------------------------------|
+| `impersonators` | `roles/iam.serviceAccountTokenCreator` | mint short-lived tokens for the account (impersonate it).           |
+| `users`         | `roles/iam.serviceAccountUser`         | attach the account to a resource or run a job as it.               |
+
+Granting these roles at project level instead (through `project_roles` or
+elsewhere) lets the member act as every service account in the project.
+
+```hcl
+module "service_accounts" {
+  # ...
+  accounts = {
+    "ci-deployer" = {
+      impersonators = ["group:platform-admins@example.com"]
+      users         = ["serviceAccount:123456789@cloudbuild.gserviceaccount.com"]
+    }
+  }
+}
+```
+
+Entries must be `user:`, `group:`, `serviceAccount:` or `domain:` members, or
+`principal://` / `principalSet://` identifiers. `allUsers` and
+`allAuthenticatedUsers` are rejected.
 
 ## Security notes
 
@@ -133,6 +161,8 @@ Running the suite in [`tests/`](tests) additionally needs Terraform or OpenTofu
 | `description`                  | `string`       | `null`  | Description of the account.                                            |
 | `create_key`                   | `bool`         | `false` | Issue a user-managed key. Also requires `allow_service_account_keys`.  |
 | `workload_identity_principals` | `list(string)` | `[]`    | Principals granted `roles/iam.workloadIdentityUser` on this account.   |
+| `impersonators`                | `list(string)` | `[]`    | Members granted `roles/iam.serviceAccountTokenCreator` on this account. |
+| `users`                        | `list(string)` | `[]`    | Members granted `roles/iam.serviceAccountUser` on this account.        |
 
 ## Outputs
 
