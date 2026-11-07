@@ -1,6 +1,15 @@
 # Test-only requirement: mock_provider needs Terraform >= 1.7 / OpenTofu >= 1.7.
 # The module itself still supports >= 1.5, so versions.tf is intentionally unchanged.
-mock_provider "google" {}
+mock_provider "google" {
+  # The provider validates service_account_id on google_service_account_iam_member,
+  # so the mocked account needs a well-formed name instead of a random string.
+  mock_resource "google_service_account" {
+    defaults = {
+      name  = "projects/example-project/serviceAccounts/mock-account@example-project.iam.gserviceaccount.com"
+      email = "mock-account@example-project.iam.gserviceaccount.com"
+    }
+  }
+}
 
 variables {
   project_id = "example-project"
@@ -188,4 +197,76 @@ run "rejects_role_for_unknown_account" {
   }
 
   expect_failures = [google_project_iam_member.this]
+}
+
+run "no_account_iam_by_default" {
+  variables {
+    accounts = {
+      "app-runtime" = {}
+    }
+  }
+
+  assert {
+    condition     = length(google_service_account_iam_member.this) == 0
+    error_message = "No grants on the account may be planned unless workload_identity_principals is set."
+  }
+}
+
+run "workload_identity_principals_get_workload_identity_user" {
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        workload_identity_principals = [
+          "principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/github/attribute.repository/moveeeax/app",
+          "serviceAccount:example-project.svc.id.goog[apps/deployer]",
+          "serviceAccount:example-project.svc.id.goog[apps/deployer]",
+        ]
+      }
+    }
+  }
+
+  assert {
+    condition     = length(google_service_account_iam_member.this) == 2
+    error_message = "Expected one grant per distinct principal."
+  }
+
+  assert {
+    condition = alltrue([
+      for g in google_service_account_iam_member.this : g.role == "roles/iam.workloadIdentityUser"
+    ])
+    error_message = "Workload Identity principals must be granted roles/iam.workloadIdentityUser."
+  }
+
+  assert {
+    condition     = google_service_account_iam_member.this["ci-deployer|roles/iam.workloadIdentityUser|serviceAccount:example-project.svc.id.goog[apps/deployer]"].member == "serviceAccount:example-project.svc.id.goog[apps/deployer]"
+    error_message = "The member must be the principal exactly as given."
+  }
+}
+
+run "rejects_workload_identity_principal_that_is_a_plain_user" {
+  command = plan
+
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        workload_identity_principals = ["user:someone@example.com"]
+      }
+    }
+  }
+
+  expect_failures = [var.accounts]
+}
+
+run "rejects_workload_identity_principal_with_malformed_gke_member" {
+  command = plan
+
+  variables {
+    accounts = {
+      "ci-deployer" = {
+        workload_identity_principals = ["serviceAccount:example-project.svc.id.goog[deployer]"]
+      }
+    }
+  }
+
+  expect_failures = [var.accounts]
 }

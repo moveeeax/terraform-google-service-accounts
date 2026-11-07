@@ -9,6 +9,28 @@ locals {
       role       = role
     }
   }
+
+  # Roles granted on each account itself (who may act as it), as role => members.
+  account_role_members = {
+    for id, sa in var.accounts : id => {
+      "roles/iam.workloadIdentityUser" = sa.workload_identity_principals
+    }
+  }
+
+  # Flattened to one entry per "<account_id>|<role>|<member>". distinct() keeps a
+  # member listed twice from producing a duplicate key.
+  account_iam = merge([
+    for id, roles in local.account_role_members : {
+      for pair in flatten([
+        for role, members in roles : [for m in distinct(members) : { role = role, member = m }]
+      ]) :
+      "${id}|${pair.role}|${pair.member}" => {
+        account_id = id
+        role       = pair.role
+        member     = pair.member
+      }
+    }
+  ]...)
 }
 
 resource "google_service_account" "this" {
@@ -57,4 +79,15 @@ resource "google_project_iam_member" "this" {
       error_message = "var.project_roles grants the primitive role \"${each.value.role}\" to \"${each.value.account_id}\". Primitive roles apply to every resource in the project. Use a predefined or custom role, or set allow_primitive_roles = true to override."
     }
   }
+}
+
+# Grants on the service account resource, not the project, so a principal can act as
+# this one account and no other. Non-authoritative for the same reason as
+# google_project_iam_member above: other members of the role on the account are kept.
+resource "google_service_account_iam_member" "this" {
+  for_each = local.account_iam
+
+  service_account_id = google_service_account.this[each.value.account_id].name
+  role               = each.value.role
+  member             = each.value.member
 }

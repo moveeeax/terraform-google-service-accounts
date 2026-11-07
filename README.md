@@ -2,7 +2,8 @@
 
 Terraform module that manages [Google Cloud](https://cloud.google.com/)
 service accounts (`google_service_account`). It creates one or more accounts
-from a map, optionally issues keys, and grants project-level roles.
+from a map, optionally issues keys, grants project-level roles, and lets
+Workload Identity principals act as an account.
 
 ## Usage
 
@@ -26,6 +27,34 @@ module "service_accounts" {
 
 A runnable example lives in [`examples/basic`](examples/basic).
 
+### Workload Identity
+
+`workload_identity_principals` grants `roles/iam.workloadIdentityUser` on that
+one account (`google_service_account_iam_member`), which is what a federated
+identity or a GKE Kubernetes service account needs in order to act as it. This
+replaces a key for CI and for workloads on GKE.
+
+```hcl
+module "service_accounts" {
+  # ...
+  accounts = {
+    "ci-deployer" = {
+      workload_identity_principals = [
+        # GitHub Actions runs from one repository, through a Workload Identity pool.
+        "principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/github/attribute.repository/moveeeax/app",
+        # A Kubernetes service account on GKE with Workload Identity enabled.
+        "serviceAccount:my-project.svc.id.goog[apps/deployer]",
+      ]
+    }
+  }
+}
+```
+
+Entries must start with `principal://iam.googleapis.com/`,
+`principalSet://iam.googleapis.com/`, or be a
+`serviceAccount:<project>.svc.id.goog[<namespace>/<ksa>]` member; anything else
+fails validation. Setting up the pool and provider is outside this module.
+
 ## Security notes
 
 **Service account keys are off by default and need a second, explicit opt-in.**
@@ -37,7 +66,8 @@ JSON key files are the most common way Google Cloud credentials are compromised.
 Prefer, in order:
 
 1. [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
-   for CI and for workloads outside Google Cloud.
+   for CI and for workloads outside Google Cloud, wired with
+   `workload_identity_principals` (see "Workload Identity" above).
 2. An attached service account (GKE Workload Identity, Cloud Run, GCE) for
    workloads inside Google Cloud.
 3. Short-lived tokens via
@@ -69,7 +99,9 @@ apply to every resource in the project. Granting one of them through
 predefined or custom role instead.
 
 **Role grants are additive.** Roles are granted with `google_project_iam_member`,
-which adds a single member and leaves every other member of that role alone. The
+which adds a single member and leaves every other member of that role alone.
+Grants on the account itself use `google_service_account_iam_member` for the
+same reason. The
 module deliberately does not use `google_project_iam_binding`, which is
 authoritative for a role and would silently remove every other member of it.
 
@@ -95,11 +127,12 @@ Running the suite in [`tests/`](tests) additionally needs Terraform or OpenTofu
 
 ### `accounts` object
 
-| Field          | Type     | Default | Description                                                          |
-|----------------|----------|---------|-----------------------------------------------------------------------|
-| `display_name` | `string` | `null`  | Human-readable name for the account.                                  |
-| `description`  | `string` | `null`  | Description of the account.                                           |
-| `create_key`   | `bool`   | `false` | Issue a user-managed key. Also requires `allow_service_account_keys`. |
+| Field                          | Type           | Default | Description                                                            |
+|--------------------------------|----------------|---------|------------------------------------------------------------------------|
+| `display_name`                 | `string`       | `null`  | Human-readable name for the account.                                   |
+| `description`                  | `string`       | `null`  | Description of the account.                                            |
+| `create_key`                   | `bool`         | `false` | Issue a user-managed key. Also requires `allow_service_account_keys`.  |
+| `workload_identity_principals` | `list(string)` | `[]`    | Principals granted `roles/iam.workloadIdentityUser` on this account.   |
 
 ## Outputs
 
